@@ -4,15 +4,29 @@ import { NewsFeed } from "@/components/NewsFeed";
 import { CalendarList } from "@/components/CalendarList";
 import { StudyCenter } from "@/components/StudyCenter";
 import { SEED_DASHBOARD } from "@/lib/seed-data";
+import { getLatestSnapshot, getCalendarItems, getStudyItems } from "@/lib/dashboard-repo";
 
-// TODO(#2): substituir SEED_DASHBOARD pela leitura do payload mais recente
-// gravado no Supabase pela rotina diária (Vercel Cron) e pela curadoria do time.
-export default function Home() {
-  const dashboard = SEED_DASHBOARD;
+export const dynamic = "force-dynamic";
+
+export default async function Home() {
+  const [snapshot, calendar, study] = await Promise.all([
+    getLatestSnapshot(),
+    getCalendarItems(),
+    getStudyItems(),
+  ]);
+
+  const dashboard = {
+    atualizadoEm: snapshot?.atualizado_em ?? SEED_DASHBOARD.atualizadoEm,
+    market: snapshot?.market ?? SEED_DASHBOARD.market,
+    feed: snapshot?.feed ?? SEED_DASHBOARD.feed,
+    calendar: calendar.length > 0 ? calendar : SEED_DASHBOARD.calendar,
+    study: study.length > 0 ? study : SEED_DASHBOARD.study,
+  };
+  const semDadoReal = snapshot === null;
 
   return (
     <div className="wrap">
-      <Ticker market={dashboard.market} />
+      <Ticker market={dashboard.market} semDadoReal={semDadoReal} />
       <DashboardHeader atualizadoEm={dashboard.atualizadoEm} />
 
       <div className="grid">
