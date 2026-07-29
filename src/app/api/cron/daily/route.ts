@@ -38,6 +38,7 @@ export async function GET(req: NextRequest) {
   const report = await generateDailyReport({
     existingCalendarTitles: existingCalendar.map((c) => c.nome),
     existingStudyUrls: existingStudy.map((s) => s.url).filter((u): u is string => Boolean(u)),
+    recentFeedTitles: (previousSnapshot?.feed ?? []).map((f) => f.titulo),
   });
 
   if (!report) {

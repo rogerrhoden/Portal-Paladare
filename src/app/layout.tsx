@@ -23,7 +23,7 @@ const ibmPlexMono = IBM_Plex_Mono({
 export const metadata: Metadata = {
   title: "Portal Paladare",
   description:
-    "Inteligência do setor de óleo e gás, mineração e energia para o time comercial e a diretoria da Paladare.",
+    "Inteligência de mercado para catering, hotelaria e facilities — óleo e gás, mineração e contratos públicos e privados de alimentação — para o time comercial e a diretoria da Paladare.",
 };
 
 export default function RootLayout({
