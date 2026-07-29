@@ -74,6 +74,46 @@ export async function getCalendarItems(): Promise<CalendarItem[]> {
   });
 }
 
+export type CalendarItemFull = {
+  id: string;
+  startDate: string;
+  endDate: string | null;
+  title: string;
+  location: string;
+  isDeadline: boolean;
+  impact: string;
+  source: "equipe" | "automatico";
+};
+
+/** Todos os eventos, incluindo os passados — usado na área de curadoria. */
+export async function getAllCalendarItems(): Promise<CalendarItemFull[]> {
+  const { data, error } = await supabaseAdmin()
+    .from("calendar_items")
+    .select("id, start_date, end_date, title, location, is_deadline, impact, source")
+    .order("start_date", { ascending: false });
+
+  if (error) {
+    console.error("[dashboard-repo] getAllCalendarItems falhou:", error.message);
+    return [];
+  }
+
+  return (data as (CalendarRow & { source: "equipe" | "automatico" })[]).map((row) => ({
+    id: row.id,
+    startDate: row.start_date,
+    endDate: row.end_date,
+    title: row.title,
+    location: row.location ?? "",
+    isDeadline: row.is_deadline,
+    impact: row.impact ?? "",
+    source: row.source,
+  }));
+}
+
+export async function deleteCalendarItem(id: string): Promise<void> {
+  const { error } = await supabaseAdmin().from("calendar_items").delete().eq("id", id);
+  if (error) throw new Error(`Falha ao excluir evento no Supabase: ${error.message}`);
+}
+
 export async function addCalendarItem(input: {
   startDate: string;
   endDate?: string | null;
@@ -140,4 +180,9 @@ export async function addStudyItem(input: {
     source: input.source ?? "equipe",
   });
   if (error) throw new Error(`Falha ao gravar conteúdo no Supabase: ${error.message}`);
+}
+
+export async function deleteStudyItem(id: string): Promise<void> {
+  const { error } = await supabaseAdmin().from("study_items").delete().eq("id", id);
+  if (error) throw new Error(`Falha ao excluir conteúdo no Supabase: ${error.message}`);
 }

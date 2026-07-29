@@ -48,6 +48,12 @@ export default async function Home() {
         <br />
         O briefing comercial acionável (alvos, prazos, estratégia) é entregue à
         parte, só para o dono da conta.
+        <br />
+        Time: adicione links de estudo e datas da agenda na{" "}
+        <a href="/equipe" style={{ color: "var(--amber)" }}>
+          área de curadoria
+        </a>
+        .
       </p>
     </div>
   );
