@@ -24,6 +24,27 @@ export async function getLatestSnapshot(): Promise<SnapshotRow | null> {
   return data as SnapshotRow | null;
 }
 
+/** Feed dos últimos N snapshots (não só o mais recente) — usado pra rotina
+ * diária saber o que já cobriu nos últimos dias e girar o foco entre as
+ * empresas da watchlist em vez de repetir sempre as mesmas. */
+export async function getRecentFeedTitles(days = 5): Promise<string[]> {
+  const { data, error } = await supabaseAdmin()
+    .from("dashboard_snapshot")
+    .select("feed")
+    .order("created_at", { ascending: false })
+    .limit(days);
+
+  if (error) {
+    console.error("[dashboard-repo] getRecentFeedTitles falhou:", error.message);
+    return [];
+  }
+
+  const titles = (data as { feed: NewsItem[] }[]).flatMap((row) =>
+    (row.feed ?? []).map((item) => item.titulo),
+  );
+  return Array.from(new Set(titles)).slice(0, 50);
+}
+
 export async function saveSnapshot(input: {
   atualizadoEm: string;
   market: MarketTick[];

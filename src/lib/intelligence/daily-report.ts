@@ -1,6 +1,7 @@
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import { env } from "@/lib/env";
+import { formatWatchlistForPrompt } from "./company-watchlist";
 
 const MODEL = "claude-sonnet-5";
 
@@ -58,16 +59,16 @@ const SUBMIT_REPORT_TOOL: Anthropic.Tool = {
       feed: {
         type: "array",
         minItems: 6,
-        maxItems: 10,
+        maxItems: 12,
         description:
-          "Entre 6 e 10 notícias recentes e verificadas, cobrindo setores diferentes (nunca todas do mesmo setor ou das mesmas 2-3 empresas), para o dashboard compartilhado. Traga só itens reais — se não encontrar o suficiente com qualidade, devolva menos itens em vez de inventar ou repetir.",
+          "Entre 6 e 12 notícias recentes e verificadas, cobrindo setores diferentes (nunca todas do mesmo setor ou das mesmas 2-3 empresas), para o dashboard compartilhado. Traga só itens reais — se não encontrar o suficiente com qualidade, devolva menos itens em vez de inventar ou repetir.",
         items: {
           type: "object",
           properties: {
             setor: {
               type: "string",
               description:
-                "Ex: 'Óleo e Gás · Nacional', 'Mineração · Nacional', 'Catering Público · Prisional', 'Restaurante Popular', 'Cesta Básica', 'Catering Privado · Facilities'",
+                "Ex: 'Óleo e Gás · Nacional', 'Óleo e Gás · Nova Descoberta', 'Mineração · Nacional', 'Catering Público · Prisional', 'Restaurante Popular', 'Cesta Básica', 'Aviação · Catering de Bordo', 'Catering Privado · Facilities'",
             },
             age: { type: "string", description: "Ex: 'hoje', 'esta semana', 'fecha 31/07'" },
             titulo: { type: "string" },
@@ -76,7 +77,7 @@ const SUBMIT_REPORT_TOOL: Anthropic.Tool = {
             impacto: {
               type: "string",
               description:
-                "1 frase: o que esse fato muda pra operação/comercial da Paladare (catering, hotelaria e facilities — sondas, minas, canteiros, presídios, restaurantes populares, cestas básicas, contratos privados).",
+                "1 frase: o que esse fato muda pra operação/comercial da Paladare (catering, hotelaria e facilities — sondas, minas, canteiros, presídios, restaurantes populares, cestas básicas, aviação, contratos privados).",
             },
           },
           required: ["setor", "age", "titulo", "texto", "fonte", "impacto"],
@@ -86,7 +87,7 @@ const SUBMIT_REPORT_TOOL: Anthropic.Tool = {
         type: "array",
         maxItems: 3,
         description:
-          "Lives/vídeos recentes do setor (IBP, IBRAM, ANP, ROG.e, associações de facilities/nutrição institucional etc), para o dashboard compartilhado. Só inclua se encontrar algo real e recente; pode ser lista vazia.",
+          "Lives/vídeos recentes do setor (IBP, IBRAM, ANP, ROG.e, associações de facilities/nutrição institucional/aviação etc), para o dashboard compartilhado. Só inclua se encontrar algo real e recente; pode ser lista vazia.",
         items: {
           type: "object",
           properties: {
@@ -100,9 +101,9 @@ const SUBMIT_REPORT_TOOL: Anthropic.Tool = {
       },
       new_calendar_events: {
         type: "array",
-        maxItems: 3,
+        maxItems: 5,
         description:
-          "Feiras/eventos do setor com data confirmada que NÃO estão na lista de já conhecidos, para o dashboard compartilhado. Só inclua se tiver certeza da data; pode ser lista vazia.",
+          "Feiras, prazos ou eventos relevantes pra Paladare com data confirmada que NÃO estão na lista de já conhecidos, para o dashboard compartilhado. Pode ser um evento daqui a até 12 meses — não precisa ser próximo. Só inclua se tiver certeza da data; pode ser lista vazia.",
         items: {
           type: "object",
           properties: {
@@ -137,7 +138,7 @@ const SUBMIT_REPORT_TOOL: Anthropic.Tool = {
           bidding_opportunities: {
             type: "array",
             description:
-              "Licitações e oportunidades reais de catering/facilities em qualquer portal público ou privado: Petronect, PNCP (federal e estadual), portais de mineradoras, secretarias estaduais/municipais de administração penitenciária (alimentação prisional), programas de restaurante popular, contratos de cesta básica (corporativos, industriais ou de assistência social). Não se limite a óleo/gás e mineração.",
+              "Licitações e oportunidades reais de catering/facilities em qualquer portal público ou privado: Petronect, PNCP (federal e estadual), portais de mineradoras, secretarias estaduais/municipais de administração penitenciária (alimentação prisional), programas de restaurante popular, contratos de cesta básica, catering de bordo pra companhias aéreas. Sem fronteira dentro do Brasil — qualquer estado conta.",
             items: {
               type: "object",
               properties: {
@@ -152,7 +153,7 @@ const SUBMIT_REPORT_TOOL: Anthropic.Tool = {
           prospecting_targets: {
             type: "array",
             description:
-              "Empresas ou órgãos públicos específicos para contatar agora, com o motivo concreto. Varie: o Brasil tem mais de 30 operadoras de óleo e gás e dezenas de mineradoras — não repita sempre os mesmos 2-3 nomes. Inclua também alvos fora de óleo/gás/mineração quando fizer sentido: secretarias de administração penitenciária, prefeituras com programa de restaurante popular, empresas que compram cesta básica em volume, empresas de facilities que podem terceirizar catering.",
+              "Empresas ou órgãos públicos específicos para contatar agora, com o motivo concreto. Priorize checar novidades nas empresas da watchlist (passada no prompt) que ainda não foram cobertas nos últimos dias, além de achados novos da pesquisa. Inclua também alvos fora de óleo/gás/mineração quando fizer sentido: secretarias de administração penitenciária, prefeituras com programa de restaurante popular, empresas que compram cesta básica em volume, companhias aéreas/catering de bordo, empresas de facilities.",
             items: {
               type: "object",
               properties: {
@@ -165,7 +166,7 @@ const SUBMIT_REPORT_TOOL: Anthropic.Tool = {
           competitor_moves: {
             type: "array",
             description:
-              "Movimentos de concorrentes de catering/facilities/nutrição institucional (não só no óleo e gás) e novos contratos assinados por operadoras, mineradoras ou órgãos públicos que afetam esse mercado.",
+              "Movimentos de concorrentes de catering/facilities/nutrição institucional (qualquer segmento) e novos contratos assinados por operadoras, mineradoras ou órgãos públicos — priorizando as empresas da watchlist.",
             items: {
               type: "object",
               properties: {
@@ -196,25 +197,33 @@ function buildPrompt(context: {
     timeZone: "America/Maceio",
   });
 
-  return `Hoje é ${hoje}. Você monta a inteligência diária da Paladare, empresa brasileira de catering, hotelaria e facilities, com base sendo transferida para Maceió (AL) e meta de entrar no mercado offshore.
+  return `Hoje é ${hoje}. Você monta a inteligência diária da Paladare, empresa brasileira de catering, hotelaria e facilities. A Paladare atua em todo o território nacional, sem fronteira de região — qualquer estado do Brasil é relevante, não só Nordeste ou Alagoas (onde fica a base da empresa).
 
 A Paladare atende (ou quer atender) qualquer contrato de alimentação/facilities, público ou privado, incluindo:
-- Sondas de petróleo, plataformas offshore e onshore, minas e canteiros industriais — em todo o Brasil, não só Nordeste (o país tem mais de 30 operadoras de óleo e gás e dezenas de mineradoras ativas; varie as empresas e regiões, não fique preso sempre nas mesmas 2-3).
+- Sondas de petróleo, plataformas offshore e onshore, minas e canteiros industriais, em qualquer estado do Brasil.
+- Descoberta de novos poços/campos de petróleo e gás (mesmo antes de virarem produção) — interessa saber cedo.
 - Alimentação em unidades do sistema penitenciário (contratos estaduais/federais).
 - Restaurantes populares (programas municipais/estaduais de alimentação subsidiada).
 - Cestas básicas (contratos corporativos, industriais ou de assistência social, públicos ou privados).
+- Catering de bordo para aeronaves (companhias aéreas, aviação executiva, aeroportos).
 - Qualquer outro contrato de catering/facilities, público ou privado, fora desses (hospitais, eventos, campus corporativo, etc.) quando for relevante.
+
+## Watchlist de empresas de interesse permanente
+
+O dono da Paladare levantou esta lista de empresas de óleo e gás e mineração que atuam no Brasil e quer ser sempre atualizado sobre elas — contratos novos, licitações, expansões, resultados, qualquer movimento relevante. Você não precisa (nem consegue) checar todas as ${"~90"} em uma única execução: priorize um subconjunto diferente a cada dia, girando o foco, e use os temas já cobertos recentemente (informados abaixo) pra não repetir sempre as mesmas.
+
+${formatWatchlistForPrompt()}
 
 Pesquise na web e produza DUAS coisas, no MESMO relatório:
 
 ## Parte A — dashboard compartilhado com o time (sem estratégia, só panorama)
 
-1. FEED: entre 6 e 10 notícias recentes cobrindo essa diversidade de setores (misture óleo e gás, mineração, alimentação prisional, restaurante popular, cesta básica e outros contratos de catering/facilities — não traga tudo do mesmo setor nem das mesmas empresas). Para cada uma, escreva também "impacto": uma frase direta sobre o que isso significa comercialmente pra Paladare (não genérica — cite o ganho ou risco concreto).
+1. FEED: entre 6 e 12 notícias recentes cobrindo essa diversidade de setores e regiões (misture óleo e gás — incluindo novas descobertas —, mineração, alimentação prisional, restaurante popular, cesta básica, catering de bordo/aviação e outros contratos de catering/facilities). Priorize novidades das empresas da watchlist quando houver. Para cada uma, escreva também "impacto": uma frase direta sobre o que isso significa comercialmente pra Paladare (não genérica — cite o ganho ou risco concreto).
 ${context.recentFeedTitles.length > 0 ? `   Evite repetir os mesmos temas/empresas dos últimos dias: ${context.recentFeedTitles.join(" | ")}.` : ""}
 
 2. STUDY_SUGGESTIONS (0 a 3): lives ou vídeos recentes e reais do setor. Só inclua se encontrar algo verificável com URL real. Não sugira nenhum destes, que já estão na central de estudos: ${context.existingStudyUrls.join(", ") || "(nenhum)"}.
 
-3. NEW_CALENDAR_EVENTS (0 a 3): feiras, prazos ou eventos com data confirmada que ainda não estão na agenda. Não repita nenhum destes, que já estão cadastrados: ${context.existingCalendarTitles.join(", ") || "(nenhum)"}.
+3. NEW_CALENDAR_EVENTS (0 a 5): feiras, prazos ou eventos relevantes pra Paladare com data confirmada que ainda não estão na agenda — pode ser algo daqui a até 12 meses, não precisa ser próximo. Não repita nenhum destes, que já estão cadastrados: ${context.existingCalendarTitles.join(", ") || "(nenhum)"}.
 
 ## Parte B — briefing PRIVADO, só para o dono da empresa por e-mail (nunca aparece pro time)
 
@@ -222,11 +231,11 @@ Aqui é estratégia de verdade. Seja específico: nomes de empresa, datas, núme
 
 4. DEADLINES: prazos que fecham nos próximos 30 dias a partir de hoje (inscrições, editais, licitações, cadastros).
 
-5. BIDDING_OPPORTUNITIES: licitações e oportunidades reais de catering/facilities em qualquer portal — Petronect, PNCP (federal e estadual), portais de mineradoras, secretarias de administração penitenciária, programas de restaurante popular, contratos de cesta básica. Não se limite a óleo/gás e mineração.
+5. BIDDING_OPPORTUNITIES: licitações e oportunidades reais de catering/facilities em qualquer portal, em qualquer estado — Petronect, PNCP (federal e estadual), portais de mineradoras, secretarias de administração penitenciária, programas de restaurante popular, contratos de cesta básica, catering de bordo.
 
-6. PROSPECTING_TARGETS: empresas ou órgãos públicos específicos para contatar agora, com o motivo concreto. Varie entre as dezenas de operadoras/mineradoras que atuam no Brasil, e inclua também alvos de fora desses dois setores quando fizer sentido (prisional, restaurante popular, cesta básica, facilities).
+6. PROSPECTING_TARGETS: empresas ou órgãos públicos específicos para contatar agora, com o motivo concreto. Use a watchlist como prioridade, girando o foco a cada dia, e inclua também alvos de fora de óleo/gás/mineração quando fizer sentido.
 
-7. COMPETITOR_MOVES: movimentos de concorrentes de catering/facilities/nutrição institucional (qualquer segmento, não só óleo e gás) e novos contratos assinados por operadoras, mineradoras ou órgãos públicos.
+7. COMPETITOR_MOVES: movimentos de concorrentes de catering/facilities/nutrição institucional/aviação e novos contratos assinados por operadoras, mineradoras ou órgãos públicos — priorizando as empresas da watchlist.
 
 Se não encontrar nada real e verificável para algum item, devolva lista vazia (ou, no caso do feed, menos itens) — nunca invente prazo, empresa, contrato ou repita o mesmo fato reformulado só pra preencher espaço.
 
@@ -247,7 +256,7 @@ export async function generateDailyReport(context: {
   const client = new Anthropic({ apiKey: env.anthropicApiKey });
 
   const tools: Anthropic.ToolUnion[] = [
-    { type: "web_search_20250305", name: "web_search", max_uses: 20 },
+    { type: "web_search_20250305", name: "web_search", max_uses: 25 },
     SUBMIT_REPORT_TOOL,
   ];
 
@@ -265,7 +274,7 @@ export async function generateDailyReport(context: {
   for (let attempt = 0; attempt < 5; attempt++) {
     const response = await client.messages.create({
       model: MODEL,
-      max_tokens: 9500,
+      max_tokens: 11000,
       messages,
       tools,
     });

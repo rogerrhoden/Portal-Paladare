@@ -3,6 +3,7 @@ import { env } from "@/lib/env";
 import { fetchAllMarketData } from "@/lib/market";
 import {
   getLatestSnapshot,
+  getRecentFeedTitles,
   saveSnapshot,
   getCalendarItems,
   getStudyItems,
@@ -27,8 +28,9 @@ export async function GET(req: NextRequest) {
     return new Response("Unauthorized", { status: 401 });
   }
 
-  const [previousSnapshot, existingCalendar, existingStudy] = await Promise.all([
+  const [previousSnapshot, recentFeedTitles, existingCalendar, existingStudy] = await Promise.all([
     getLatestSnapshot(),
+    getRecentFeedTitles(5),
     getCalendarItems(),
     getStudyItems(),
   ]);
@@ -38,7 +40,7 @@ export async function GET(req: NextRequest) {
   const report = await generateDailyReport({
     existingCalendarTitles: existingCalendar.map((c) => c.nome),
     existingStudyUrls: existingStudy.map((s) => s.url).filter((u): u is string => Boolean(u)),
-    recentFeedTitles: (previousSnapshot?.feed ?? []).map((f) => f.titulo),
+    recentFeedTitles,
   });
 
   if (!report) {
