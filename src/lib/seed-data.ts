@@ -137,14 +137,5 @@ export const SEED_DASHBOARD: DashboardPayload = {
         "Números oficiais de produção de óleo e gás. Útil pra dimensionar o tamanho de cada operação.",
       origem: "curado",
     },
-    {
-      id: "exemplo-sugestao-automatica",
-      kind: "Live recente",
-      titulo: "Exemplo de sugestão automática",
-      url: "https://www.ibp.org.br/eventos/",
-      texto:
-        "A rotina diária também sugere lives e vídeos recentes do setor — itens assim aparecem marcados como sugeridos automaticamente.",
-      origem: "automatico",
-    },
   ],
 };
