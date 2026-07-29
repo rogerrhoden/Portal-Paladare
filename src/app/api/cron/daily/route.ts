@@ -10,6 +10,8 @@ import {
   addStudyItem,
 } from "@/lib/dashboard-repo";
 import { generateDailyReport } from "@/lib/intelligence/daily-report";
+import { sendEmail } from "@/lib/email/resend";
+import { buildBriefingEmailHtml } from "@/lib/email/briefing-template";
 
 export const maxDuration = 300;
 
@@ -79,6 +81,34 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  let briefingEmailSent = false;
+  let briefingEmailError: string | null = null;
+  if (report) {
+    try {
+      const dateLabel = new Date().toLocaleDateString("pt-BR", {
+        day: "2-digit",
+        month: "long",
+        year: "numeric",
+        timeZone: "America/Maceio",
+      });
+      await sendEmail({
+        to: env.briefingEmailTo,
+        subject: `Briefing Paladare — ${dateLabel}`,
+        html: buildBriefingEmailHtml({
+          dateLabel,
+          deadlines: report.private_briefing.deadlines,
+          biddingOpportunities: report.private_briefing.bidding_opportunities,
+          prospectingTargets: report.private_briefing.prospecting_targets,
+          competitorMoves: report.private_briefing.competitor_moves,
+        }),
+      });
+      briefingEmailSent = true;
+    } catch (err) {
+      briefingEmailError = err instanceof Error ? err.message : "Falha desconhecida";
+      console.error("[cron/daily] envio do briefing por e-mail falhou:", briefingEmailError);
+    }
+  }
+
   return Response.json({
     ok: true,
     atualizadoEm,
@@ -87,5 +117,7 @@ export async function GET(req: NextRequest) {
     reportOk: Boolean(report),
     studiesAdded,
     eventsAdded,
+    briefingEmailSent,
+    briefingEmailError,
   });
 }

@@ -29,10 +29,23 @@ export type CalendarEventDraft = {
   impact: string;
 };
 
+export type DeadlineDraft = { title: string; date: string; note: string };
+export type BiddingOpportunityDraft = { title: string; portal: string; note: string; url?: string };
+export type ProspectingTargetDraft = { company: string; reason: string };
+export type CompetitorMoveDraft = { title: string; detail: string; date: string };
+
+export type PrivateBriefingDraft = {
+  deadlines: DeadlineDraft[];
+  bidding_opportunities: BiddingOpportunityDraft[];
+  prospecting_targets: ProspectingTargetDraft[];
+  competitor_moves: CompetitorMoveDraft[];
+};
+
 export type DailyReport = {
   feed: FeedItemDraft[];
   study_suggestions: StudySuggestionDraft[];
   new_calendar_events: CalendarEventDraft[];
+  private_briefing: PrivateBriefingDraft;
 };
 
 const SUBMIT_REPORT_TOOL: Anthropic.Tool = {
@@ -46,7 +59,7 @@ const SUBMIT_REPORT_TOOL: Anthropic.Tool = {
         type: "array",
         minItems: 5,
         maxItems: 5,
-        description: "Exatamente 5 notícias recentes e verificadas do setor.",
+        description: "Exatamente 5 notícias recentes e verificadas do setor, para o dashboard compartilhado.",
         items: {
           type: "object",
           properties: {
@@ -68,7 +81,7 @@ const SUBMIT_REPORT_TOOL: Anthropic.Tool = {
         type: "array",
         maxItems: 3,
         description:
-          "Lives/vídeos recentes do setor (IBP, IBRAM, ANP, ROG.e etc). Só inclua se encontrar algo real e recente; pode ser lista vazia.",
+          "Lives/vídeos recentes do setor (IBP, IBRAM, ANP, ROG.e etc), para o dashboard compartilhado. Só inclua se encontrar algo real e recente; pode ser lista vazia.",
         items: {
           type: "object",
           properties: {
@@ -84,7 +97,7 @@ const SUBMIT_REPORT_TOOL: Anthropic.Tool = {
         type: "array",
         maxItems: 3,
         description:
-          "Feiras/eventos do setor com data confirmada que NÃO estão na lista de já conhecidos. Só inclua se tiver certeza da data; pode ser lista vazia.",
+          "Feiras/eventos do setor com data confirmada que NÃO estão na lista de já conhecidos, para o dashboard compartilhado. Só inclua se tiver certeza da data; pode ser lista vazia.",
         items: {
           type: "object",
           properties: {
@@ -98,8 +111,68 @@ const SUBMIT_REPORT_TOOL: Anthropic.Tool = {
           required: ["title", "start_date", "location", "is_deadline", "impact"],
         },
       },
+      private_briefing: {
+        type: "object",
+        description:
+          "Inteligência acionável, PRIVADA — só vai por e-mail para o dono da empresa, nunca aparece no dashboard do time. Direto: nomes, datas, números, sem enrolação.",
+        properties: {
+          deadlines: {
+            type: "array",
+            description: "Prazos que fecham nos próximos 30 dias (inscrições, editais, cadastros).",
+            items: {
+              type: "object",
+              properties: {
+                title: { type: "string" },
+                date: { type: "string", description: "YYYY-MM-DD" },
+                note: { type: "string" },
+              },
+              required: ["title", "date", "note"],
+            },
+          },
+          bidding_opportunities: {
+            type: "array",
+            description: "Licitações e oportunidades de catering em portais como Petronect, PNCP, portais de mineradoras.",
+            items: {
+              type: "object",
+              properties: {
+                title: { type: "string" },
+                portal: { type: "string", description: "Ex: 'Petronect', 'PNCP', 'Vale Verde'" },
+                note: { type: "string" },
+                url: { type: "string" },
+              },
+              required: ["title", "portal", "note"],
+            },
+          },
+          prospecting_targets: {
+            type: "array",
+            description: "Empresas para contatar, com o motivo (ex: SBM Offshore, Foresea, Constellation, Mineração Vale Verde).",
+            items: {
+              type: "object",
+              properties: {
+                company: { type: "string" },
+                reason: { type: "string" },
+              },
+              required: ["company", "reason"],
+            },
+          },
+          competitor_moves: {
+            type: "array",
+            description: "Movimentos de concorrentes e novos contratos das operadoras.",
+            items: {
+              type: "object",
+              properties: {
+                title: { type: "string" },
+                detail: { type: "string" },
+                date: { type: "string" },
+              },
+              required: ["title", "detail", "date"],
+            },
+          },
+        },
+        required: ["deadlines", "bidding_opportunities", "prospecting_targets", "competitor_moves"],
+      },
     },
-    required: ["feed", "study_suggestions", "new_calendar_events"],
+    required: ["feed", "study_suggestions", "new_calendar_events", "private_briefing"],
   },
 };
 
@@ -111,9 +184,11 @@ function buildPrompt(context: { existingCalendarTitles: string[]; existingStudyU
     timeZone: "America/Maceio",
   });
 
-  return `Hoje é ${hoje}. Você monta o portal de inteligência da Paladare, empresa brasileira de catering e hotelaria que atende sondas de petróleo, minas e canteiros industriais, com base sendo transferida para Maceió (AL) e meta de entrar no mercado offshore.
+  return `Hoje é ${hoje}. Você monta a inteligência diária da Paladare, empresa brasileira de catering e hotelaria que atende sondas de petróleo, minas e canteiros industriais, com base sendo transferida para Maceió (AL) e meta de entrar no mercado offshore.
 
-Pesquise na web e traga, verificado e recente:
+Pesquise na web e produza DUAS coisas, no MESMO relatório:
+
+## Parte A — dashboard compartilhado com o time (sem estratégia, só panorama)
 
 1. FEED: exatamente 5 notícias recentes do setor de óleo e gás, mineração e energia relevantes para catering industrial, com foco em Nordeste, Bacia Sergipe-Alagoas e Margem Equatorial. Inclua novos contratos e negociações de empresas do setor. Para cada uma, escreva também "impacto": uma frase direta sobre o que isso significa comercialmente pra Paladare (não genérica — cite o ganho ou risco concreto).
 
@@ -121,13 +196,28 @@ Pesquise na web e traga, verificado e recente:
 
 3. NEW_CALENDAR_EVENTS (0 a 3): feiras, prazos ou eventos do setor com data confirmada que ainda não estão na agenda. Não repita nenhum destes, que já estão cadastrados: ${context.existingCalendarTitles.join(", ") || "(nenhum)"}.
 
-Depois de pesquisar, chame a ferramenta submit_report uma única vez com o resultado final. Não responda em texto solto — a resposta final tem que ser a chamada da ferramenta.`;
+## Parte B — briefing PRIVADO, só para o dono da empresa por e-mail (nunca aparece pro time)
+
+Aqui é estratégia de verdade. Seja específico: nomes de empresa, datas, números. Sem enrolação.
+
+4. DEADLINES: prazos que fecham nos próximos 30 dias a partir de hoje (inscrições, editais, cadastros).
+
+5. BIDDING_OPPORTUNITIES: licitações e oportunidades de catering em portais como Petronect, PNCP, ou portais de mineradoras.
+
+6. PROSPECTING_TARGETS: empresas específicas para contatar agora, com o motivo concreto (ex: SBM Offshore, Foresea, Constellation, Mineração Vale Verde, ou outras que você encontrar na pesquisa).
+
+7. COMPETITOR_MOVES: movimentos de concorrentes (outras empresas de catering/hotelaria industrial) e novos contratos assinados por operadoras/mineradoras que afetam esse mercado.
+
+Se não encontrar nada real para um desses 4 itens privados, devolva lista vazia — nunca invente prazo, empresa ou contrato.
+
+Depois de pesquisar, chame a ferramenta submit_report uma única vez com o resultado final, incluindo private_briefing preenchido. Não responda em texto solto — a resposta final tem que ser a chamada da ferramenta.`;
 }
 
 /**
- * Pesquisa na web via Claude e devolve o relatório estruturado do dia.
- * Retorna null (em vez de lançar) se a IA não conseguir produzir um
- * relatório válido — quem chama deve manter o conteúdo anterior nesse caso.
+ * Pesquisa na web via Claude e devolve o relatório estruturado do dia
+ * (conteúdo do dashboard + briefing privado). Retorna null (em vez de
+ * lançar) se a IA não conseguir produzir um relatório válido — quem chama
+ * deve manter o conteúdo anterior nesse caso.
  */
 export async function generateDailyReport(context: {
   existingCalendarTitles: string[];
@@ -136,7 +226,7 @@ export async function generateDailyReport(context: {
   const client = new Anthropic({ apiKey: env.anthropicApiKey });
 
   const tools: Anthropic.ToolUnion[] = [
-    { type: "web_search_20250305", name: "web_search", max_uses: 10 },
+    { type: "web_search_20250305", name: "web_search", max_uses: 14 },
     SUBMIT_REPORT_TOOL,
   ];
 
@@ -147,7 +237,7 @@ export async function generateDailyReport(context: {
   for (let attempt = 0; attempt < 4; attempt++) {
     const response = await client.messages.create({
       model: MODEL,
-      max_tokens: 4096,
+      max_tokens: 7000,
       messages,
       tools,
     });
@@ -172,6 +262,12 @@ export async function generateDailyReport(context: {
         feed: parsed.feed,
         study_suggestions: Array.isArray(parsed.study_suggestions) ? parsed.study_suggestions : [],
         new_calendar_events: Array.isArray(parsed.new_calendar_events) ? parsed.new_calendar_events : [],
+        private_briefing: {
+          deadlines: parsed.private_briefing?.deadlines ?? [],
+          bidding_opportunities: parsed.private_briefing?.bidding_opportunities ?? [],
+          prospecting_targets: parsed.private_briefing?.prospecting_targets ?? [],
+          competitor_moves: parsed.private_briefing?.competitor_moves ?? [],
+        },
       };
     }
 
