@@ -2,10 +2,11 @@ import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE_NAME, verifySessionCookie } from "@/lib/session";
 
 export const config = {
-  matcher: ["/equipe/:path*"],
+  // Protege tudo (dashboard e /equipe) exceto login, rotas de API e assets internos do Next.
+  matcher: ["/((?!api/|_next/|login|favicon.ico).*)"],
 };
 
-export async function middleware(req: NextRequest) {
+export async function proxy(req: NextRequest) {
   const cookie = req.cookies.get(SESSION_COOKIE_NAME)?.value;
   const valid = await verifySessionCookie(cookie);
 
