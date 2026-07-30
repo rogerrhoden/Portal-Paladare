@@ -13,6 +13,8 @@ import {
 import { generateDailyReport } from "@/lib/intelligence/daily-report";
 import { sendEmail } from "@/lib/email/resend";
 import { buildBriefingEmailHtml } from "@/lib/email/briefing-template";
+import { formatRelativeAge } from "@/lib/format";
+import type { NewsItem } from "@/lib/types";
 
 export const maxDuration = 300;
 
@@ -46,7 +48,14 @@ export async function GET(req: NextRequest) {
   if (!report) {
     console.error("[cron/daily] geração via Anthropic falhou; mantendo feed do dia anterior");
   }
-  const feed = report?.feed ?? previousSnapshot?.feed ?? [];
+
+  // Data real (calculada pela IA) vira rótulo relativo determinístico aqui no
+  // código — nunca deixamos a IA "chutar" a linha do tempo. Mais recente primeiro.
+  const feed: NewsItem[] = report
+    ? [...report.feed]
+        .sort((a, b) => b.data.localeCompare(a.data))
+        .map(({ data, ...rest }) => ({ ...rest, age: formatRelativeAge(data) }))
+    : (previousSnapshot?.feed ?? []);
 
   const atualizadoEm = new Date().toISOString();
   await saveSnapshot({ atualizadoEm, market, feed });

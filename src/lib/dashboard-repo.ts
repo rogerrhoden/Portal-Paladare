@@ -3,6 +3,23 @@ import { supabaseAdmin } from "./supabase";
 import { formatCalendarDate } from "./format";
 import type { CalendarItem, MarketTick, NewsItem, StudyItem } from "./types";
 
+/**
+ * O cliente do Supabase às vezes falha o primeiro request logo após um cold
+ * start serverless com "JWT issued at future" (relógio do container ainda
+ * assentando) — some sozinho no request seguinte. Em vez de deixar a página
+ * cair pra um estado vazio por causa disso, tenta de novo uma vez.
+ */
+async function withRetry<T>(
+  run: () => PromiseLike<{ data: T | null; error: { message: string } | null }>,
+): Promise<{ data: T | null; error: { message: string } | null }> {
+  const first = await run();
+  if (first.error?.message.includes("JWT issued at future")) {
+    await new Promise((r) => setTimeout(r, 300));
+    return run();
+  }
+  return first;
+}
+
 type SnapshotRow = {
   atualizado_em: string;
   market: MarketTick[];
@@ -10,12 +27,14 @@ type SnapshotRow = {
 };
 
 export async function getLatestSnapshot(): Promise<SnapshotRow | null> {
-  const { data, error } = await supabaseAdmin()
-    .from("dashboard_snapshot")
-    .select("atualizado_em, market, feed")
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  const { data, error } = await withRetry(() =>
+    supabaseAdmin()
+      .from("dashboard_snapshot")
+      .select("atualizado_em, market, feed")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  );
 
   if (error) {
     console.error("[dashboard-repo] getLatestSnapshot falhou:", error.message);
@@ -28,11 +47,13 @@ export async function getLatestSnapshot(): Promise<SnapshotRow | null> {
  * diária saber o que já cobriu nos últimos dias e girar o foco entre as
  * empresas da watchlist em vez de repetir sempre as mesmas. */
 export async function getRecentFeedTitles(days = 5): Promise<string[]> {
-  const { data, error } = await supabaseAdmin()
-    .from("dashboard_snapshot")
-    .select("feed")
-    .order("created_at", { ascending: false })
-    .limit(days);
+  const { data, error } = await withRetry(() =>
+    supabaseAdmin()
+      .from("dashboard_snapshot")
+      .select("feed")
+      .order("created_at", { ascending: false })
+      .limit(days),
+  );
 
   if (error) {
     console.error("[dashboard-repo] getRecentFeedTitles falhou:", error.message);
@@ -70,11 +91,13 @@ type CalendarRow = {
 
 export async function getCalendarItems(): Promise<CalendarItem[]> {
   const todayIso = new Date().toISOString().slice(0, 10);
-  const { data, error } = await supabaseAdmin()
-    .from("calendar_items")
-    .select("id, start_date, end_date, title, location, is_deadline, impact")
-    .or(`end_date.gte.${todayIso},and(end_date.is.null,start_date.gte.${todayIso})`)
-    .order("start_date", { ascending: true });
+  const { data, error } = await withRetry(() =>
+    supabaseAdmin()
+      .from("calendar_items")
+      .select("id, start_date, end_date, title, location, is_deadline, impact")
+      .or(`end_date.gte.${todayIso},and(end_date.is.null,start_date.gte.${todayIso})`)
+      .order("start_date", { ascending: true }),
+  );
 
   if (error) {
     console.error("[dashboard-repo] getCalendarItems falhou:", error.message);
@@ -108,10 +131,12 @@ export type CalendarItemFull = {
 
 /** Todos os eventos, incluindo os passados — usado na área de curadoria. */
 export async function getAllCalendarItems(): Promise<CalendarItemFull[]> {
-  const { data, error } = await supabaseAdmin()
-    .from("calendar_items")
-    .select("id, start_date, end_date, title, location, is_deadline, impact, source")
-    .order("start_date", { ascending: false });
+  const { data, error } = await withRetry(() =>
+    supabaseAdmin()
+      .from("calendar_items")
+      .select("id, start_date, end_date, title, location, is_deadline, impact, source")
+      .order("start_date", { ascending: false }),
+  );
 
   if (error) {
     console.error("[dashboard-repo] getAllCalendarItems falhou:", error.message);
@@ -166,10 +191,12 @@ type StudyRow = {
 };
 
 export async function getStudyItems(): Promise<StudyItem[]> {
-  const { data, error } = await supabaseAdmin()
-    .from("study_items")
-    .select("id, kind, title, description, url, source")
-    .order("created_at", { ascending: false });
+  const { data, error } = await withRetry(() =>
+    supabaseAdmin()
+      .from("study_items")
+      .select("id, kind, title, description, url, source")
+      .order("created_at", { ascending: false }),
+  );
 
   if (error) {
     console.error("[dashboard-repo] getStudyItems falhou:", error.message);

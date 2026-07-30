@@ -7,7 +7,7 @@ const MODEL = "claude-sonnet-5";
 
 export type FeedItemDraft = {
   setor: string;
-  age: string;
+  data: string;
   titulo: string;
   texto: string;
   fonte: string;
@@ -70,7 +70,11 @@ const SUBMIT_REPORT_TOOL: Anthropic.Tool = {
               description:
                 "Ex: 'Óleo e Gás · Nacional', 'Óleo e Gás · Nova Descoberta', 'Mineração · Nacional', 'Catering Público · Prisional', 'Restaurante Popular', 'Cesta Básica', 'Aviação · Catering de Bordo', 'Catering Privado · Facilities'",
             },
-            age: { type: "string", description: "Ex: 'hoje', 'esta semana', 'fecha 31/07'" },
+            data: {
+              type: "string",
+              description:
+                "Data real do fato/publicação, formato YYYY-MM-DD. Calcule com cuidado a partir da fonte (ex: 'publicado há 3 dias', 'em 14/07/2026') — nunca chute. Se só souber o mês, use o dia 01.",
+            },
             titulo: { type: "string" },
             texto: { type: "string", description: "1-2 frases, fatos concretos: nomes, datas, números." },
             fonte: { type: "string" },
@@ -80,7 +84,7 @@ const SUBMIT_REPORT_TOOL: Anthropic.Tool = {
                 "1 frase: o que esse fato muda pra operação/comercial da Paladare (catering, hotelaria e facilities — sondas, minas, canteiros, presídios, restaurantes populares, cestas básicas, aviação, contratos privados).",
             },
           },
-          required: ["setor", "age", "titulo", "texto", "fonte", "impacto"],
+          required: ["setor", "data", "titulo", "texto", "fonte", "impacto"],
         },
       },
       study_suggestions: {
@@ -271,49 +275,57 @@ export async function generateDailyReport(context: {
     },
   ];
 
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const response = await client.messages.create({
-      model: MODEL,
-      max_tokens: 11000,
-      messages,
-      tools,
-    });
+  // Qualquer falha aqui (rede, crédito da Anthropic esgotado, timeout, etc.)
+  // nunca pode derrubar a rota inteira — o resto da rotina (mercado, agenda,
+  // e-mail) tem que continuar funcionando mesmo se a geração de conteúdo falhar.
+  try {
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const response = await client.messages.create({
+        model: MODEL,
+        max_tokens: 11000,
+        messages,
+        tools,
+      });
 
-    if (response.stop_reason === "pause_turn") {
-      messages = [...messages, { role: "assistant", content: response.content }];
-      continue;
-    }
-
-    const submit = response.content.find(
-      (block): block is Anthropic.ToolUseBlock =>
-        block.type === "tool_use" && block.name === "submit_report",
-    );
-
-    if (submit) {
-      const parsed = submit.input as DailyReport;
-      if (!Array.isArray(parsed.feed) || parsed.feed.length === 0) {
-        console.error("[daily-report] submit_report veio sem feed válido");
-        return null;
+      if (response.stop_reason === "pause_turn") {
+        messages = [...messages, { role: "assistant", content: response.content }];
+        continue;
       }
-      return {
-        feed: parsed.feed,
-        study_suggestions: Array.isArray(parsed.study_suggestions) ? parsed.study_suggestions : [],
-        new_calendar_events: Array.isArray(parsed.new_calendar_events) ? parsed.new_calendar_events : [],
-        private_briefing: {
-          deadlines: parsed.private_briefing?.deadlines ?? [],
-          bidding_opportunities: parsed.private_briefing?.bidding_opportunities ?? [],
-          prospecting_targets: parsed.private_briefing?.prospecting_targets ?? [],
-          competitor_moves: parsed.private_briefing?.competitor_moves ?? [],
-        },
-      };
+
+      const submit = response.content.find(
+        (block): block is Anthropic.ToolUseBlock =>
+          block.type === "tool_use" && block.name === "submit_report",
+      );
+
+      if (submit) {
+        const parsed = submit.input as DailyReport;
+        if (!Array.isArray(parsed.feed) || parsed.feed.length === 0) {
+          console.error("[daily-report] submit_report veio sem feed válido");
+          return null;
+        }
+        return {
+          feed: parsed.feed,
+          study_suggestions: Array.isArray(parsed.study_suggestions) ? parsed.study_suggestions : [],
+          new_calendar_events: Array.isArray(parsed.new_calendar_events) ? parsed.new_calendar_events : [],
+          private_briefing: {
+            deadlines: parsed.private_briefing?.deadlines ?? [],
+            bidding_opportunities: parsed.private_briefing?.bidding_opportunities ?? [],
+            prospecting_targets: parsed.private_briefing?.prospecting_targets ?? [],
+            competitor_moves: parsed.private_briefing?.competitor_moves ?? [],
+          },
+        };
+      }
+
+      console.error(
+        `[daily-report] resposta terminou sem submit_report (stop_reason=${response.stop_reason})`,
+      );
+      return null;
     }
 
-    console.error(
-      `[daily-report] resposta terminou sem submit_report (stop_reason=${response.stop_reason})`,
-    );
+    console.error("[daily-report] excedeu tentativas de pause_turn");
+    return null;
+  } catch (err) {
+    console.error("[daily-report] chamada à Anthropic falhou:", err instanceof Error ? err.message : err);
     return null;
   }
-
-  console.error("[daily-report] excedeu tentativas de pause_turn");
-  return null;
 }
