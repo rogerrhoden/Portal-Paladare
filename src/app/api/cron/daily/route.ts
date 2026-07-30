@@ -18,6 +18,10 @@ import type { NewsItem } from "@/lib/types";
 
 export const maxDuration = 300;
 
+/** Fatos mais antigos que isso não entram no feed — é ferramenta de
+ * prospecção ativa, não arquivo histórico. */
+const MAX_FEED_AGE_DAYS = 45;
+
 function isAuthorized(req: NextRequest): boolean {
   const secret = env.cronSecret;
   // Sem CRON_SECRET configurado (ex: ainda em desenvolvimento local), não bloqueia.
@@ -51,11 +55,25 @@ export async function GET(req: NextRequest) {
 
   // Data real (calculada pela IA) vira rótulo relativo determinístico aqui no
   // código — nunca deixamos a IA "chutar" a linha do tempo. Mais recente primeiro.
-  const feed: NewsItem[] = report
-    ? [...report.feed]
-        .sort((a, b) => b.data.localeCompare(a.data))
-        .map(({ data, ...rest }) => ({ ...rest, age: formatRelativeAge(data) }))
-    : (previousSnapshot?.feed ?? []);
+  // Corte de idade em código: o feed é ferramenta de prospecção ativa, então
+  // fato velho é descartado mesmo que a IA tenha achado relevante.
+  const freshCutoff = new Date(Date.now() - MAX_FEED_AGE_DAYS * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+
+  const generatedFeed: NewsItem[] = (report?.feed ?? [])
+    .filter((item) => item.data >= freshCutoff)
+    .sort((a, b) => b.data.localeCompare(a.data))
+    .map(({ data, ...rest }) => ({ ...rest, age: formatRelativeAge(data) }));
+
+  const discardedAsStale = (report?.feed.length ?? 0) - generatedFeed.length;
+  if (discardedAsStale > 0) {
+    console.warn(`[cron/daily] ${discardedAsStale} item(ns) do feed descartados por serem antigos`);
+  }
+
+  // Nunca publica um feed vazio: prefere manter o do dia anterior.
+  const feed: NewsItem[] =
+    generatedFeed.length > 0 ? generatedFeed : (previousSnapshot?.feed ?? []);
 
   const atualizadoEm = new Date().toISOString();
   await saveSnapshot({ atualizadoEm, market, feed });

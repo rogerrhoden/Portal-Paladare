@@ -58,10 +58,10 @@ const SUBMIT_REPORT_TOOL: Anthropic.Tool = {
     properties: {
       feed: {
         type: "array",
-        minItems: 6,
+        minItems: 5,
         maxItems: 12,
         description:
-          "Entre 6 e 12 notícias recentes e verificadas, cobrindo setores diferentes (nunca todas do mesmo setor ou das mesmas 2-3 empresas), para o dashboard compartilhado. Traga só itens reais — se não encontrar o suficiente com qualidade, devolva menos itens em vez de inventar ou repetir.",
+          "Entre 5 e 12 OPORTUNIDADES e movimentos recentes (idealmente dos últimos 7-15 dias — ver regra de recência no prompt), cobrindo setores diferentes (nunca todas do mesmo setor ou das mesmas 2-3 empresas), para o dashboard compartilhado. Prefira menos itens e frescos a mais itens velhos. Traga só itens reais — se não encontrar o suficiente com qualidade, devolva menos itens em vez de inventar, repetir ou usar notícia velha só pra completar.",
         items: {
           type: "object",
           properties: {
@@ -218,11 +218,19 @@ O dono da Paladare levantou esta lista de empresas de óleo e gás e mineração
 
 ${formatWatchlistForPrompt()}
 
+A Paladare está sempre caçando contrato ativamente — o feed é uma ferramenta de oportunidade, não um arquivo histórico. Notícia velha sem gancho de ação atual não ajuda.
+
+## Regra de recência (vale pro FEED inteiro)
+
+- Priorize fortemente fatos dos ÚLTIMOS 7 A 15 DIAS.
+- Só inclua algo com mais de 30 dias se ainda tiver uma AÇÃO PENDENTE E ATUAL amarrada a ele — um prazo que ainda não fechou, uma obra/poço que ainda vai acontecer, uma licitação ainda aberta, uma negociação de M&A ainda em curso. Nesse caso, deixe isso explícito no "texto" (ex: "conclusão prevista pra 7/8/2026").
+- Nunca inclua um resultado trimestral, recorde de produção ou notícia institucional antiga só porque é sobre uma empresa da watchlist — isso não é oportunidade, é ruído. Prefira menos itens só com fatos frescos e acionáveis a completar a cota com coisa velha.
+
 Pesquise na web e produza DUAS coisas, no MESMO relatório:
 
 ## Parte A — dashboard compartilhado com o time (sem estratégia, só panorama)
 
-1. FEED: entre 6 e 12 notícias recentes cobrindo essa diversidade de setores e regiões (misture óleo e gás — incluindo novas descobertas —, mineração, alimentação prisional, restaurante popular, cesta básica, catering de bordo/aviação e outros contratos de catering/facilities). Priorize novidades das empresas da watchlist quando houver. Para cada uma, escreva também "impacto": uma frase direta sobre o que isso significa comercialmente pra Paladare (não genérica — cite o ganho ou risco concreto).
+1. FEED: entre 5 e 12 oportunidades e movimentos recentes (ver regra de recência acima) cobrindo essa diversidade de setores e regiões (misture óleo e gás — incluindo novas descobertas —, mineração, alimentação prisional, restaurante popular, cesta básica, catering de bordo/aviação e outros contratos de catering/facilities). Priorize: editais/licitações abertos agora, novos operadores/projetos começando, expansões que vão precisar de fornecedor, contratos assinados recentemente. Priorize novidades das empresas da watchlist quando houver e forem recentes. Para cada uma, escreva também "impacto": uma frase direta sobre o que isso significa comercialmente pra Paladare — de preferência dizendo o que fazer, não só descrevendo o fato.
 ${context.recentFeedTitles.length > 0 ? `   Evite repetir os mesmos temas/empresas dos últimos dias: ${context.recentFeedTitles.join(" | ")}.` : ""}
 
 2. STUDY_SUGGESTIONS (0 a 3): lives ou vídeos recentes e reais do setor. Só inclua se encontrar algo verificável com URL real. Não sugira nenhum destes, que já estão na central de estudos: ${context.existingStudyUrls.join(", ") || "(nenhum)"}.
@@ -259,8 +267,11 @@ export async function generateDailyReport(context: {
 }): Promise<DailyReport | null> {
   const client = new Anthropic({ apiKey: env.anthropicApiKey });
 
+  // max_uses controla o tempo total da rotina. Com 25 a execução chegou a
+  // ~3,8 min, perto demais do teto de 300s da Vercel — 16 mantém a pesquisa
+  // ampla com margem de segurança pra não estourar o limite e perder o dia.
   const tools: Anthropic.ToolUnion[] = [
-    { type: "web_search_20250305", name: "web_search", max_uses: 25 },
+    { type: "web_search_20250305", name: "web_search", max_uses: 16 },
     SUBMIT_REPORT_TOOL,
   ];
 
